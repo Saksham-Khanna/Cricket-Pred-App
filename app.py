@@ -3,14 +3,12 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
-# ================= PAGE CONFIG =================
 st.set_page_config(page_title="AI IPL Player Analytics", layout="wide")
 st.title("🏏 AI-Based IPL Player Analytics")
 st.markdown("Season-aware AI-driven player suggestions & intelligent comparison dashboard")
 
 DATA_DIR = "data"
 
-# ================= LOAD DATA =================
 @st.cache_data
 def load_data():
     players = pd.read_csv(os.path.join(DATA_DIR, "player_features_with_score.csv"))
@@ -20,14 +18,12 @@ def load_data():
 
 players_df, deliveries_df, matches_df = load_data()
 
-# ================= SESSION STATE =================
 if "selected_season" not in st.session_state:
     st.session_state.selected_season = None
 
 if "suggestions_df" not in st.session_state:
     st.session_state.suggestions_df = None
 
-# ================= HELPER FUNCTIONS =================
 @st.cache_data
 def get_season_data(season):
     season_matches = matches_df[matches_df["season"] == season]
@@ -56,25 +52,19 @@ def suggest_players(df, team_a, team_b, n):
         .reset_index(drop=True)
     )
 
-# ================= SIDEBAR =================
 st.sidebar.header("Season Selection")
 
 seasons = sorted(matches_df["season"].dropna().unique(), reverse=True)
 selected_season = st.sidebar.selectbox("Select IPL Season", seasons)
 
-# Reset suggestions only when season changes
 if st.session_state.selected_season != selected_season:
     st.session_state.selected_season = selected_season
     st.session_state.suggestions_df = None
 
 season_matches, players_season_df = get_season_data(selected_season)
 
-# ================= TABS =================
 tab1, tab2 = st.tabs(["🏏 Suggest Players", "🔍 Compare Players"])
 
-# =================================================
-# 🟢 TAB 1 — AI PLAYER SUGGESTION ENGINE
-# =================================================
 with tab1:
     st.subheader("🏏 AI Player Suggestion Engine")
 
@@ -96,16 +86,13 @@ with tab1:
 
         max_available = len(eligible)
 
-        if max_available > 0:
-            top_n = st.number_input(
-                "Enter number of players to suggest",
-                min_value=1,
-                max_value=max_available,
-                value=1,
-                step=1
-            )
-        else:
-            top_n = 1
+        top_n = st.number_input(
+            "Enter number of players to suggest",
+            min_value=1,
+            max_value=max_available if max_available > 0 else 1,
+            value=1,
+            step=1
+        )
 
         submitted = st.form_submit_button("Generate AI Suggestions")
 
@@ -119,19 +106,38 @@ with tab1:
                     players_season_df, team_a, team_b, top_n
                 )
 
-    # Display results
     if st.session_state.suggestions_df is None:
         st.info("Select teams and generate suggestions.")
     else:
         result = st.session_state.suggestions_df
 
-        st.markdown("### 📊 Key Insights")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Players Selected", len(result))
-        c2.metric("Top Score", round(result["final_score"].max(), 2))
-        c3.metric("Average Score", round(result["final_score"].mean(), 2))
+        st.markdown("### 📊 Advanced Key Insights")
 
-        st.success(f"🔥 Best AI Pick: {result.iloc[0]['player']}")
+        top_score = result["final_score"].max()
+        min_score = result["final_score"].min()
+        avg_score = result["final_score"].mean()
+        std_score = result["final_score"].std()
+
+        best_player = result.iloc[0]["player"]
+
+        team_counts = result["team"].value_counts()
+        team_split = " | ".join([f"{team}: {count}" for team, count in team_counts.items()])
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric("🔥 Best Player", best_player)
+        c2.metric("📈 Top Score", round(top_score, 2))
+        c3.metric("📊 Average Score", round(avg_score, 2))
+        c4.metric("⚖ Score Spread", round(top_score - min_score, 2))
+
+        st.markdown(
+            f"""
+            **📉 Consistency Index (Std Dev):** {round(std_score, 2)}  
+            **🏏 Team Distribution:** {team_split}
+            """
+        )
+
+        st.success(f"🔥 Best AI Pick: {best_player}")
 
         st.markdown("### 🏆 Suggested Players")
         st.dataframe(
@@ -139,7 +145,6 @@ with tab1:
             use_container_width=True
         )
 
-        # ===== Premium Horizontal Chart =====
         st.markdown("### 📈 Performance Visualization")
 
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -160,9 +165,6 @@ with tab1:
         plt.tight_layout()
         st.pyplot(fig)
 
-# =================================================
-# 🟢 TAB 2 — INTELLIGENT PLAYER COMPARISON
-# =================================================
 with tab2:
     st.subheader("🔍 Player Performance Comparison")
 
@@ -184,40 +186,32 @@ with tab2:
         )
         player_2 = st.selectbox("Select Player 2", players_team_2)
 
-    if team_1 == team_2 and player_1 == player_2:
-        st.warning("Please select two different players.")
-    else:
-        p1 = players_season_df[
-            (players_season_df["team"] == team_1) &
-            (players_season_df["player"] == player_1)
-        ].iloc[0]
+    p1_data = players_season_df[
+        (players_season_df["team"] == team_1) &
+        (players_season_df["player"] == player_1)
+    ]
 
-        p2 = players_season_df[
-            (players_season_df["team"] == team_2) &
-            (players_season_df["player"] == player_2)
-        ].iloc[0]
+    p2_data = players_season_df[
+        (players_season_df["team"] == team_2) &
+        (players_season_df["player"] == player_2)
+    ]
+
+    if p1_data.empty or p2_data.empty:
+        st.warning("Player data not available for this season.")
+    else:
+        p1 = p1_data.iloc[0]
+        p2 = p2_data.iloc[0]
 
         comparison_df = pd.DataFrame({
             "Metric": ["Team", "Runs (Batting)", "Wickets (Bowling)", "Performance Score"],
-            player_1: [
-                p1["team"],
-                p1["runs"],
-                p1["wickets"],
-                round(p1["performance_score"], 3)
-            ],
-            player_2: [
-                p2["team"],
-                p2["runs"],
-                p2["wickets"],
-                round(p2["performance_score"], 3)
-            ],
+            player_1: [p1["team"], p1["runs"], p1["wickets"], round(p1["performance_score"], 3)],
+            player_2: [p2["team"], p2["runs"], p2["wickets"], round(p2["performance_score"], 3)],
         })
 
         st.dataframe(comparison_df, use_container_width=True)
 
         st.markdown("### 🧠 Performance Insights")
 
-        # Batting
         if p1["runs"] > p2["runs"]:
             st.success(f"🏏 Better Batting: {player_1}")
         elif p2["runs"] > p1["runs"]:
@@ -225,7 +219,6 @@ with tab2:
         else:
             st.info("🏏 Batting Performance: Equal")
 
-        # Bowling
         if p1["wickets"] > p2["wickets"]:
             st.success(f"🎯 Better Bowling: {player_1}")
         elif p2["wickets"] > p1["wickets"]:
@@ -233,7 +226,6 @@ with tab2:
         else:
             st.info("🎯 Bowling Performance: Equal")
 
-        # Overall
         if p1["performance_score"] > p2["performance_score"]:
             st.success(f"🏆 Better Overall Performance: {player_1}")
         elif p2["performance_score"] > p1["performance_score"]:
@@ -241,6 +233,5 @@ with tab2:
         else:
             st.info("🏆 Overall Performance: Equal")
 
-# ================= FOOTER =================
 st.markdown("---")
 st.caption("AI IPL Player Analytics | Season-aware • Data-driven • Resume-ready")
